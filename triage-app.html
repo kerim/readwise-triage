@@ -403,7 +403,7 @@ function saveSession() {
     stats: stats,
     skippedIds: Array.from(skippedIds)
   };
-  try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+  try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) { console.warn('Session save failed:', e); }
 }
 
 function loadSession() {
@@ -420,7 +420,7 @@ function clearOldSessions() {
   try {
     for (var i = localStorage.length - 1; i >= 0; i--) {
       var k = localStorage.key(i);
-      if (k && k.indexOf('triage-session-') === 0 && k !== key) {
+      if (k && k.startsWith('triage-session-') && k !== key) {
         localStorage.removeItem(k);
       }
     }
