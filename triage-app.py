@@ -7,6 +7,7 @@ import subprocess
 import sys
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -32,7 +33,7 @@ def save_acted_ids(ids):
 
 def run_readwise(*args):
     """Run a readwise CLI command and return parsed JSON."""
-    cmd = ["readwise"] + list(args)
+    cmd = ["readwise"] + list(args) + ["--json"]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         return {"error": result.stderr.strip()}
@@ -104,7 +105,7 @@ class TriageHandler(BaseHTTPRequestHandler):
 
     def serve_details(self, doc_id):
         result = run_readwise("reader-get-document-details",
-                              "--document-id", doc_id, "--json")
+                              "--document-id", doc_id)
         self.send_json(result)
 
     def run_prep(self):
@@ -150,9 +151,12 @@ class TriageHandler(BaseHTTPRequestHandler):
         elif action == "tag_archive":
             if tags:
                 tag_str = ",".join(tags)
-                result = run_readwise("reader-add-tags-to-document",
-                                      "--document-id", doc_id,
-                                      "--tag-names", tag_str)
+                tag_result = run_readwise("reader-add-tags-to-document",
+                                          "--document-id", doc_id,
+                                          "--tag-names", tag_str)
+                if "error" in tag_result:
+                    self.send_json({"error": "Tagging failed: " + tag_result["error"]}, 500)
+                    return
             result = run_readwise("reader-move-documents",
                                   "--document-ids", doc_id,
                                   "--location", "archive")
@@ -172,7 +176,10 @@ if __name__ == "__main__":
         print(f"No batch file at {BATCH_FILE}. Run triage-prep.py first.")
         sys.exit(1)
 
-    server = HTTPServer(("localhost", PORT), TriageHandler)
+    class ThreadedServer(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+
+    server = ThreadedServer(("localhost", PORT), TriageHandler)
     print(f"Triage app running at http://localhost:{PORT}")
     webbrowser.open(f"http://localhost:{PORT}")
 

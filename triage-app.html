@@ -296,6 +296,17 @@
   .empty-state { text-align: center; color: var(--text-secondary); font-size: 18px; }
   .empty-state-emoji { font-size: 48px; margin-bottom: 16px; }
 
+  .action-btn {
+    background: var(--bg-element);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 10px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+  }
+  .action-btn:hover { background: var(--bg-element-hover); }
+
 </style>
 </head>
 <body>
@@ -394,6 +405,15 @@ function relativeDate(isoStr) {
   return 'Saved ' + days + ' days ago';
 }
 
+function showEmptyState(emoji, message) {
+  var area = document.getElementById('card-area');
+  area.replaceChildren();
+  var empty = el('div', 'empty-state');
+  empty.appendChild(el('div', 'empty-state-emoji', emoji));
+  empty.appendChild(el('div', '', message));
+  return { area: area, container: empty };
+}
+
 function makeSection(label, text, extraClass) {
   var section = el('div', 'card-section' + (extraClass ? ' ' + extraClass : ''));
   section.appendChild(el('div', 'card-section-label', label));
@@ -405,12 +425,8 @@ function makeSection(label, text, extraClass) {
 async function init() {
   var resp = await fetch('/api/batch');
   if (!resp.ok) {
-    var area = document.getElementById('card-area');
-    area.replaceChildren();
-    var empty = el('div', 'empty-state');
-    empty.appendChild(el('div', 'empty-state-emoji', '\u{1F4DA}'));
-    empty.appendChild(document.createTextNode('No batch available. Run triage-prep.py first.'));
-    area.appendChild(empty);
+    var s = showEmptyState('\u{1F4DA}', 'No batch available. Run triage-prep.py first.');
+    s.area.appendChild(s.container);
     return;
   }
   batch = await resp.json();
@@ -449,19 +465,12 @@ function showCard() {
   var card = document.getElementById('card');
 
   if (currentIndex >= docs.length) {
-    var area = document.getElementById('card-area');
-    area.replaceChildren();
-    var empty = el('div', 'empty-state');
-    empty.appendChild(el('div', 'empty-state-emoji', '\u2705'));
-    empty.appendChild(document.createTextNode('All done! No more items to triage.'));
-    empty.appendChild(document.createElement('br'));
-    empty.appendChild(document.createElement('br'));
-    var loadBtn = el('button', 'theme-toggle', 'Load next batch');
-    loadBtn.style.fontSize = '15px';
-    loadBtn.style.padding = '10px 24px';
+    var s = showEmptyState('\u2705', 'All done! No more items to triage.');
+    s.container.appendChild(document.createElement('br'));
+    var loadBtn = el('button', 'action-btn', 'Load next batch');
     loadBtn.addEventListener('click', loadNextBatch);
-    empty.appendChild(loadBtn);
-    area.appendChild(empty);
+    s.container.appendChild(loadBtn);
+    s.area.appendChild(s.container);
     updateCounter();
     return;
   }
@@ -512,7 +521,9 @@ function doAction(action, tags) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
-  });
+  }).then(function(r) {
+    if (!r.ok) r.json().then(function(d) { console.error('Action failed:', d.error || d); });
+  }).catch(function(e) { console.error('Action error:', e); });
 
   if (action === 'archive' || action === 'tag_archive') stats.archived++;
   else if (action === 'shortlist') stats.shortlisted++;
@@ -667,28 +678,22 @@ async function loadNextBatch() {
     var data = await resp.json();
 
     if (!resp.ok) {
-      area.replaceChildren();
-      var err = el('div', 'empty-state');
-      err.appendChild(el('div', 'empty-state-emoji', '\u274C'));
-      err.appendChild(el('div', '', 'Batch generation failed'));
-      err.appendChild(document.createElement('br'));
+      var s = showEmptyState('\u274C', 'Batch generation failed');
       var errDetail = el('pre', '');
       errDetail.style.cssText = 'text-align:left;font-size:12px;color:var(--tomato-text);max-width:500px;margin:12px auto;white-space:pre-wrap;word-break:break-word;';
       errDetail.textContent = data.error || 'Unknown error';
-      err.appendChild(errDetail);
+      s.container.appendChild(errDetail);
       if (data.stdout) {
         var outDetail = el('pre', '');
         outDetail.style.cssText = 'text-align:left;font-size:12px;color:var(--text-tertiary);max-width:500px;margin:8px auto;white-space:pre-wrap;word-break:break-word;';
         outDetail.textContent = data.stdout;
-        err.appendChild(outDetail);
+        s.container.appendChild(outDetail);
       }
-      err.appendChild(document.createElement('br'));
-      var retryBtn = el('button', 'theme-toggle', 'Retry');
-      retryBtn.style.fontSize = '15px';
-      retryBtn.style.padding = '10px 24px';
+      s.container.appendChild(document.createElement('br'));
+      var retryBtn = el('button', 'action-btn', 'Retry');
       retryBtn.addEventListener('click', loadNextBatch);
-      err.appendChild(retryBtn);
-      area.appendChild(err);
+      s.container.appendChild(retryBtn);
+      s.area.appendChild(s.container);
       return;
     }
 
@@ -700,11 +705,8 @@ async function loadNextBatch() {
     docs = batch.documents || [];
 
     if (docs.length === 0) {
-      area.replaceChildren();
-      var done = el('div', 'empty-state');
-      done.appendChild(el('div', 'empty-state-emoji', '\u{1F389}'));
-      done.appendChild(el('div', '', 'No new items in your Later list!'));
-      area.appendChild(done);
+      var ns = showEmptyState('\u{1F389}', 'No new items in your Later list!');
+      ns.area.appendChild(ns.container);
       return;
     }
 
@@ -723,11 +725,8 @@ async function loadNextBatch() {
     setupTagPicker();
     showCard();
   } catch (e) {
-    area.replaceChildren();
-    var netErr = el('div', 'empty-state');
-    netErr.appendChild(el('div', 'empty-state-emoji', '\u274C'));
-    netErr.appendChild(el('div', '', 'Network error: ' + e.message));
-    area.appendChild(netErr);
+    var ne = showEmptyState('\u274C', 'Network error: ' + e.message);
+    ne.area.appendChild(ne.container);
   }
 }
 
