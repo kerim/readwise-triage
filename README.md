@@ -2,6 +2,8 @@
 
 A local web app for fast triage of your Readwise Reader Later list. AI-generated personalized pitches (via Claude Haiku) tell you why each item is worth reading or skipping. Actions are instant — no LLM in the loop during triage.
 
+![Screenshot of Readwise Triage showing a card with title, overview, why-read and why-skip pitches](screenshot.png)
+
 ## How It Works
 
 **Overnight (or on-demand):** `triage-prep.py` fetches your Later list, generates personalized pitches using Claude Haiku and your reader persona, and writes everything to `triage-batch.json`.
