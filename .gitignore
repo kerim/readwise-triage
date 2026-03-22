@@ -1,0 +1,11 @@
+# Personal
+reader_persona.md
+
+# Generated / runtime
+triage-batch.json
+triage-acted.json
+triage-prep.log
+triage-docs/
+
+# Claude Code
+.claude/

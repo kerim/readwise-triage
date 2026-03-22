@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Readwise Triage</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* --- Radix color tokens --- */
+  :root {
+    /* Dark theme (default) — Radix Slate Dark */
+    --bg-app: #111113;
+    --bg-surface: #18191b;
+    --bg-element: #212225;
+    --bg-element-hover: #272a2d;
+    --border-subtle: #2b2f31;
+    --border: #3a3f42;
+    --border-strong: #4c5155;
+    --text-primary: #eeeef0;
+    --text-secondary: #b0b4ba;
+    --text-tertiary: #7e848a;
+    --shadow: rgba(0,0,0,0.35);
+    --overlay: rgba(0,0,0,0.6);
+
+    --accent: #3e63dd;
+    --accent-text: #fff;
+    --red: #e5484d;
+    --green: #46a758;
+    --green-text: #63d37a;
+    --tomato-text: #f4815b;
+    --yellow: #ffe629;
+    --blue: #3e63dd;
+    --purple: #8e4ec6;
+    --fresh-bg: #30a46c;
+    --fresh-text: #fff;
+  }
+
+  .light {
+    /* Light theme — Radix Slate Light */
+    --bg-app: #f9f9fb;
+    --bg-surface: #ffffff;
+    --bg-element: #eeeef0;
+    --bg-element-hover: #e4e4e7;
+    --border-subtle: #d9d9e0;
+    --border: #c7c7cd;
+    --border-strong: #a9a9b1;
+    --text-primary: #1c2024;
+    --text-secondary: #60646c;
+    --text-tertiary: #8b8d98;
+    --shadow: rgba(0,0,0,0.08);
+    --overlay: rgba(0,0,0,0.25);
+
+    --accent: #3e63dd;
+    --accent-text: #fff;
+    --red: #e5484d;
+    --green: #297c3b;
+    --green-text: #18794e;
+    --tomato-text: #ca3214;
+    --yellow: #f5d90a;
+    --blue: #3e63dd;
+    --purple: #8e4ec6;
+    --fresh-bg: #30a46c;
+    --fresh-text: #fff;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  .card-title, .card-section-text { user-select: text; }
+
+  .status-bar {
+    padding: 12px 24px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 14px;
+    color: var(--text-tertiary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .status-bar .counter { color: var(--text-primary); font-weight: 600; }
+  .status-bar .left { display: flex; align-items: center; gap: 16px; }
+  .status-bar .stats span { margin-left: 16px; }
+  .status-bar .stats .archived { color: var(--red); }
+  .status-bar .stats .shortlisted { color: var(--yellow); }
+  .status-bar .stats .kept { color: var(--blue); }
+  .status-bar .stats .tagged { color: var(--purple); }
+
+  .theme-toggle {
+    background: var(--bg-element);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .theme-toggle:hover { background: var(--bg-element-hover); }
+
+  .card-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 640px;
+    width: 100%;
+    position: relative;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    cursor: grab;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+    box-shadow: 0 2px 10px var(--shadow);
+  }
+  .card.dragging { cursor: grabbing; transition: none; }
+  .card.exit-left { transform: translateX(-120%) rotate(-10deg); opacity: 0; }
+  .card.exit-right { transform: translateX(120%) rotate(10deg); opacity: 0; }
+  .card.exit-up { transform: translateY(-120%); opacity: 0; }
+  .card.exit-down { transform: translateY(80%); opacity: 0; }
+
+  .fresh-badge {
+    display: inline-block;
+    background: var(--fresh-bg);
+    color: var(--fresh-text);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .card-title {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+  }
+
+  .card-saved {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 20px;
+  }
+
+  .card-section { margin-bottom: 16px; }
+  .card-section-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+  .card-section-text {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+  .why-read .card-section-text { color: var(--green-text); }
+  .why-skip .card-section-text { color: var(--tomato-text); }
+
+  .swipe-indicator {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 48px;
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity 0.1s;
+    pointer-events: none;
+  }
+  .swipe-indicator.left { left: 40px; color: var(--red); }
+  .swipe-indicator.right { right: 40px; color: var(--yellow); }
+
+  .hints {
+    padding: 12px 24px;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-subtle);
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-shrink: 0;
+  }
+  .hints kbd {
+    display: inline-block;
+    background: var(--bg-element);
+    color: var(--text-primary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    margin-right: 4px;
+    border: 1px solid var(--border);
+  }
+
+  .tag-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--overlay);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .tag-overlay.active { display: flex; }
+
+  .tag-picker {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 4px 24px var(--shadow);
+  }
+  .tag-picker h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+  }
+  .tag-section { margin-bottom: 16px; }
+  .tag-section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+  }
+  .tag-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg-element);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tag-btn:hover { border-color: var(--border-strong); background: var(--bg-element-hover); }
+  .tag-btn.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+  .tag-picker input {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-element);
+    color: var(--text-primary);
+    font-size: 14px;
+    margin-top: 12px;
+  }
+  .tag-picker input::placeholder { color: var(--text-tertiary); }
+  .tag-actions { display: flex; gap: 12px; margin-top: 16px; justify-content: flex-end; }
+  .tag-actions button {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .tag-actions .cancel { background: var(--bg-element); color: var(--text-secondary); }
+  .tag-actions .confirm { background: var(--accent); color: var(--accent-text); }
+
+  .empty-state { text-align: center; color: var(--text-secondary); font-size: 18px; }
+  .empty-state-emoji { font-size: 48px; margin-bottom: 16px; }
+
+</style>
+</head>
+<body>
+
+<div class="status-bar">
+  <div class="left">
+    <span class="counter" id="counter">Loading...</span>
+    <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark theme"></button>
+  </div>
+  <span class="stats">
+    <span class="archived" id="stat-archived"></span>
+    <span class="shortlisted" id="stat-shortlisted"></span>
+    <span class="kept" id="stat-kept"></span>
+    <span class="tagged" id="stat-tagged"></span>
+  </span>
+</div>
+
+<div class="card-area" id="card-area">
+  <div class="card" id="card"></div>
+  <div class="swipe-indicator left" id="swipe-left">ARCHIVE</div>
+  <div class="swipe-indicator right" id="swipe-right">SHORTLIST</div>
+</div>
+
+<div class="hints">
+  <span><kbd>a</kbd> archive</span>
+  <span><kbd>s</kbd> shortlist</span>
+  <span><kbd>k</kbd> keep</span>
+  <span><kbd>t</kbd> tag & archive</span>
+  <span><kbd>o</kbd> open</span>
+  <span><kbd>→</kbd> skip</span>
+  <span><kbd>←</kbd> back</span>
+</div>
+
+<div class="tag-overlay" id="tag-overlay">
+  <div class="tag-picker" id="tag-picker">
+    <h3>Tag & Archive</h3>
+    <div class="tag-section" id="frequent-tags-section">
+      <div class="tag-section-label">Frequent</div>
+      <div class="tag-buttons" id="frequent-tags"></div>
+    </div>
+    <div class="tag-section" id="recent-tags-section">
+      <div class="tag-section-label">Recent</div>
+      <div class="tag-buttons" id="recent-tags"></div>
+    </div>
+    <input type="text" id="custom-tag-input" placeholder="Custom tag (comma-separated)...">
+    <div class="tag-actions">
+      <button class="cancel" id="tag-cancel">Cancel</button>
+      <button class="confirm" id="tag-confirm">Archive</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var batch = null;
+var docs = [];
+var currentIndex = 0;
+var stats = { archived: 0, shortlisted: 0, kept: 0, tagged: 0 };
+var selectedTags = new Set();
+
+// --- Theme ---
+function initTheme() {
+  var saved = localStorage.getItem('triage-theme');
+  var isLight = saved === 'light';
+  applyTheme(isLight);
+}
+
+function applyTheme(isLight) {
+  document.body.classList.toggle('light', isLight);
+  document.getElementById('theme-toggle').textContent = isLight ? '\u263E' : '\u2600';
+}
+
+function toggleTheme() {
+  var isLight = !document.body.classList.contains('light');
+  localStorage.setItem('triage-theme', isLight ? 'light' : 'dark');
+  applyTheme(isLight);
+}
+
+document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+initTheme();
+
+// --- Helpers ---
+function el(tag, className, text) {
+  var e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text) e.textContent = text;
+  return e;
+}
+
+function relativeDate(isoStr) {
+  if (!isoStr) return '';
+  var saved = new Date(isoStr);
+  var now = new Date();
+  var days = Math.floor((now - saved) / 86400000);
+  if (days === 0) return 'Saved today';
+  if (days === 1) return 'Saved yesterday';
+  return 'Saved ' + days + ' days ago';
+}
+
+function makeSection(label, text, extraClass) {
+  var section = el('div', 'card-section' + (extraClass ? ' ' + extraClass : ''));
+  section.appendChild(el('div', 'card-section-label', label));
+  section.appendChild(el('div', 'card-section-text', text));
+  return section;
+}
+
+// --- Init ---
+async function init() {
+  var resp = await fetch('/api/batch');
+  if (!resp.ok) {
+    var area = document.getElementById('card-area');
+    area.replaceChildren();
+    var empty = el('div', 'empty-state');
+    empty.appendChild(el('div', 'empty-state-emoji', '\u{1F4DA}'));
+    empty.appendChild(document.createTextNode('No batch available. Run triage-prep.py first.'));
+    area.appendChild(empty);
+    return;
+  }
+  batch = await resp.json();
+  docs = batch.documents || [];
+  setupTagPicker();
+  showCard();
+}
+
+function setupTagPicker() {
+  var freq = batch.frequent_tags || [];
+  var recent = batch.recent_tags || [];
+  renderTagButtons('frequent-tags', freq);
+  if (recent.length > 0) {
+    renderTagButtons('recent-tags', recent);
+  } else {
+    document.getElementById('recent-tags-section').style.display = 'none';
+  }
+}
+
+function renderTagButtons(containerId, tags) {
+  var container = document.getElementById(containerId);
+  container.replaceChildren();
+  tags.forEach(function(tag) {
+    var btn = el('button', 'tag-btn', tag);
+    btn.addEventListener('click', function() {
+      btn.classList.toggle('selected');
+      if (selectedTags.has(tag)) selectedTags.delete(tag);
+      else selectedTags.add(tag);
+    });
+    container.appendChild(btn);
+  });
+}
+
+// --- Card display ---
+function showCard() {
+  var card = document.getElementById('card');
+
+  if (currentIndex >= docs.length) {
+    var area = document.getElementById('card-area');
+    area.replaceChildren();
+    var empty = el('div', 'empty-state');
+    empty.appendChild(el('div', 'empty-state-emoji', '\u2705'));
+    empty.appendChild(document.createTextNode('All done! No more items to triage.'));
+    empty.appendChild(document.createElement('br'));
+    empty.appendChild(document.createElement('br'));
+    var loadBtn = el('button', 'theme-toggle', 'Load next batch');
+    loadBtn.style.fontSize = '15px';
+    loadBtn.style.padding = '10px 24px';
+    loadBtn.addEventListener('click', loadNextBatch);
+    empty.appendChild(loadBtn);
+    area.appendChild(empty);
+    updateCounter();
+    return;
+  }
+
+  var doc = docs[currentIndex];
+  card.className = 'card';
+  card.style.transform = '';
+  card.style.opacity = '';
+  card.replaceChildren();
+
+  if (doc.is_fresh) {
+    card.appendChild(el('div', 'fresh-badge', 'new'));
+  }
+
+  card.appendChild(el('div', 'card-title', doc.title));
+
+  var metaParts = [doc.author, doc.site_name, doc.category, doc.reading_time].filter(Boolean);
+  card.appendChild(el('div', 'card-meta', metaParts.join(' \u00B7 ')));
+  card.appendChild(el('div', 'card-saved', relativeDate(doc.saved_at)));
+
+  card.appendChild(makeSection('Overview', doc.overview));
+  card.appendChild(makeSection('Why read', doc.why_read, 'why-read'));
+  card.appendChild(makeSection('Why skip', doc.why_skip, 'why-skip'));
+
+  updateCounter();
+}
+
+function updateCounter() {
+  var total = docs.length;
+  var pos = Math.min(currentIndex + 1, total);
+  document.getElementById('counter').textContent = pos + ' / ' + total;
+
+  document.getElementById('stat-archived').textContent = stats.archived ? stats.archived + ' archived' : '';
+  document.getElementById('stat-shortlisted').textContent = stats.shortlisted ? stats.shortlisted + ' shortlisted' : '';
+  document.getElementById('stat-kept').textContent = stats.kept ? stats.kept + ' kept' : '';
+  document.getElementById('stat-tagged').textContent = stats.tagged ? stats.tagged + ' tagged' : '';
+}
+
+// --- Actions ---
+function doAction(action, tags) {
+  var doc = docs[currentIndex];
+  if (!doc) return;
+
+  var body = { id: doc.id, action: action };
+  if (tags && tags.length) body.tags = tags;
+
+  fetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (action === 'archive' || action === 'tag_archive') stats.archived++;
+  else if (action === 'shortlist') stats.shortlisted++;
+  else if (action === 'keep') stats.kept++;
+  if (tags && tags.length) stats.tagged++;
+
+  animateExit(action);
+}
+
+function animateExit(action) {
+  var card = document.getElementById('card');
+  if (action === 'archive' || action === 'tag_archive') card.className = 'card exit-left';
+  else if (action === 'shortlist') card.className = 'card exit-right';
+  else if (action === 'keep') card.className = 'card exit-down';
+  else card.className = 'card exit-up';
+
+  setTimeout(function() {
+    currentIndex++;
+    showCard();
+  }, 300);
+}
+
+// --- Keyboard ---
+document.addEventListener('keydown', function(e) {
+  if (document.getElementById('tag-overlay').classList.contains('active')) {
+    if (e.key === 'Escape') closeTagPicker();
+    if (e.key === 'Enter') confirmTagPicker();
+    return;
+  }
+
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (currentIndex >= docs.length) return;
+
+  switch (e.key) {
+    case 'a': doAction('archive'); break;
+    case 's': doAction('shortlist'); break;
+    case 'k': doAction('keep'); break;
+    case 't': e.preventDefault(); openTagPicker(); break;
+    case 'o':
+      var doc = docs[currentIndex];
+      if (doc && doc.url) window.open(doc.url, '_blank');
+      break;
+    case 'ArrowRight':
+      currentIndex = Math.min(currentIndex + 1, docs.length);
+      showCard();
+      break;
+    case 'ArrowLeft':
+      currentIndex = Math.max(currentIndex - 1, 0);
+      showCard();
+      break;
+  }
+});
+
+// --- Swipe ---
+var dragStart = null;
+var dragCard = null;
+
+document.getElementById('card-area').addEventListener('pointerdown', function(e) {
+  if (e.altKey) return;
+  if (currentIndex >= docs.length) return;
+  dragStart = { x: e.clientX, y: e.clientY };
+  dragCard = document.getElementById('card');
+  dragCard.classList.add('dragging');
+  dragCard.setPointerCapture(e.pointerId);
+});
+
+document.getElementById('card-area').addEventListener('pointermove', function(e) {
+  if (!dragStart || !dragCard) return;
+  var dx = e.clientX - dragStart.x;
+  var dy = e.clientY - dragStart.y;
+  var rotate = dx * 0.05;
+  dragCard.style.transform = 'translate(' + dx + 'px, ' + dy + 'px) rotate(' + rotate + 'deg)';
+
+  var threshold = 80;
+  document.getElementById('swipe-left').style.opacity = dx < -threshold ? 1 : 0;
+  document.getElementById('swipe-right').style.opacity = dx > threshold ? 1 : 0;
+});
+
+document.getElementById('card-area').addEventListener('pointerup', function(e) {
+  if (!dragStart || !dragCard) return;
+  var dx = e.clientX - dragStart.x;
+  var dy = e.clientY - dragStart.y;
+  var threshold = 100;
+
+  document.getElementById('swipe-left').style.opacity = 0;
+  document.getElementById('swipe-right').style.opacity = 0;
+  dragCard.classList.remove('dragging');
+
+  if (dx < -threshold) {
+    doAction('archive');
+  } else if (dx > threshold) {
+    doAction('shortlist');
+  } else if (dy > threshold) {
+    doAction('keep');
+  } else {
+    dragCard.style.transform = '';
+  }
+
+  dragStart = null;
+  dragCard = null;
+});
+
+// --- Tag picker ---
+function openTagPicker() {
+  selectedTags.clear();
+  document.querySelectorAll('.tag-btn').forEach(function(b) { b.classList.remove('selected'); });
+  document.getElementById('custom-tag-input').value = '';
+  document.getElementById('tag-overlay').classList.add('active');
+  document.getElementById('custom-tag-input').focus();
+}
+
+function closeTagPicker() {
+  document.getElementById('tag-overlay').classList.remove('active');
+}
+
+function confirmTagPicker() {
+  var custom = document.getElementById('custom-tag-input').value.trim();
+  if (custom) {
+    custom.split(',').forEach(function(t) {
+      var trimmed = t.trim();
+      if (trimmed) selectedTags.add(trimmed);
+    });
+  }
+  var tags = Array.from(selectedTags);
+  closeTagPicker();
+  doAction('tag_archive', tags);
+}
+
+document.getElementById('tag-cancel').addEventListener('click', closeTagPicker);
+document.getElementById('tag-confirm').addEventListener('click', confirmTagPicker);
+document.getElementById('tag-overlay').addEventListener('click', function(e) {
+  if (e.target === document.getElementById('tag-overlay')) closeTagPicker();
+});
+
+// --- Next batch ---
+async function loadNextBatch() {
+  var area = document.getElementById('card-area');
+  area.replaceChildren();
+  var status = el('div', 'empty-state');
+  status.appendChild(el('div', 'empty-state-emoji', '\u231B'));
+  var msg = el('div', '', 'Fetching new items and generating pitches...');
+  msg.style.marginBottom = '16px';
+  status.appendChild(msg);
+  var detail = el('div', '', 'This may take 30\u201360 seconds.');
+  detail.style.fontSize = '14px';
+  detail.style.color = 'var(--text-tertiary)';
+  status.appendChild(detail);
+  area.appendChild(status);
+
+  try {
+    var resp = await fetch('/api/prep', { method: 'POST' });
+    var data = await resp.json();
+
+    if (!resp.ok) {
+      area.replaceChildren();
+      var err = el('div', 'empty-state');
+      err.appendChild(el('div', 'empty-state-emoji', '\u274C'));
+      err.appendChild(el('div', '', 'Batch generation failed'));
+      err.appendChild(document.createElement('br'));
+      var errDetail = el('pre', '');
+      errDetail.style.cssText = 'text-align:left;font-size:12px;color:var(--tomato-text);max-width:500px;margin:12px auto;white-space:pre-wrap;word-break:break-word;';
+      errDetail.textContent = data.error || 'Unknown error';
+      err.appendChild(errDetail);
+      if (data.stdout) {
+        var outDetail = el('pre', '');
+        outDetail.style.cssText = 'text-align:left;font-size:12px;color:var(--text-tertiary);max-width:500px;margin:8px auto;white-space:pre-wrap;word-break:break-word;';
+        outDetail.textContent = data.stdout;
+        err.appendChild(outDetail);
+      }
+      err.appendChild(document.createElement('br'));
+      var retryBtn = el('button', 'theme-toggle', 'Retry');
+      retryBtn.style.fontSize = '15px';
+      retryBtn.style.padding = '10px 24px';
+      retryBtn.addEventListener('click', loadNextBatch);
+      err.appendChild(retryBtn);
+      area.appendChild(err);
+      return;
+    }
+
+    currentIndex = 0;
+    stats = { archived: 0, shortlisted: 0, kept: 0, tagged: 0 };
+
+    var batchResp = await fetch('/api/batch');
+    batch = await batchResp.json();
+    docs = batch.documents || [];
+
+    if (docs.length === 0) {
+      area.replaceChildren();
+      var done = el('div', 'empty-state');
+      done.appendChild(el('div', 'empty-state-emoji', '\u{1F389}'));
+      done.appendChild(el('div', '', 'No new items in your Later list!'));
+      area.appendChild(done);
+      return;
+    }
+
+    area.replaceChildren();
+    var card = el('div', 'card');
+    card.id = 'card';
+    area.appendChild(card);
+
+    var swipeL = el('div', 'swipe-indicator left', 'ARCHIVE');
+    swipeL.id = 'swipe-left';
+    area.appendChild(swipeL);
+    var swipeR = el('div', 'swipe-indicator right', 'SHORTLIST');
+    swipeR.id = 'swipe-right';
+    area.appendChild(swipeR);
+
+    setupTagPicker();
+    showCard();
+  } catch (e) {
+    area.replaceChildren();
+    var netErr = el('div', 'empty-state');
+    netErr.appendChild(el('div', 'empty-state-emoji', '\u274C'));
+    netErr.appendChild(el('div', '', 'Network error: ' + e.message));
+    area.appendChild(netErr);
+  }
+}
+
+// --- Start ---
+init();
+</script>
+</body>
+</html>
