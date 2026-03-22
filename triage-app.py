@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Readwise Triage Web App — zero-dependency local server for fast document triage."""
 
+__version__ = "0.1.0"
+
 import json
 import os
 import subprocess

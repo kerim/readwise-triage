@@ -8,6 +8,8 @@ items, and caches tag frequency/recency data.
 Output: triage-batch.json
 """
 
+__version__ = "0.1.0"
+
 import json
 import os
 import subprocess
