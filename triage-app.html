@@ -365,6 +365,7 @@ var docs = [];
 var currentIndex = 0;
 var stats = { archived: 0, shortlisted: 0, kept: 0, tagged: 0 };
 var selectedTags = new Set();
+var skippedIds = new Set();
 
 // --- Theme ---
 function initTheme() {
@@ -386,6 +387,51 @@ function toggleTheme() {
 
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 initTheme();
+
+// --- Session persistence ---
+function sessionKey() {
+  if (!batch || !batch.generated_at) return null;
+  return 'triage-session-' + batch.generated_at;
+}
+
+function saveSession() {
+  var key = sessionKey();
+  if (!key) return;
+  var doc = currentIndex < docs.length ? docs[currentIndex] : null;
+  var state = {
+    lastDocId: doc ? doc.id : null,
+    stats: stats,
+    skippedIds: Array.from(skippedIds)
+  };
+  try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+}
+
+function loadSession() {
+  var key = sessionKey();
+  if (!key) return null;
+  try {
+    var raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function clearOldSessions() {
+  var key = sessionKey();
+  try {
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('triage-session-') === 0 && k !== key) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch (e) {}
+}
+
+function advancePastSkipped() {
+  while (currentIndex < docs.length && skippedIds.has(docs[currentIndex].id)) {
+    currentIndex++;
+  }
+}
 
 // --- Helpers ---
 function el(tag, className, text) {
@@ -431,6 +477,19 @@ async function init() {
   }
   batch = await resp.json();
   docs = batch.documents || [];
+
+  var saved = loadSession();
+  if (saved) {
+    stats = saved.stats || { archived: 0, shortlisted: 0, kept: 0, tagged: 0 };
+    skippedIds = new Set(saved.skippedIds || []);
+    if (saved.lastDocId) {
+      var idx = docs.findIndex(function(d) { return d.id === saved.lastDocId; });
+      if (idx >= 0) currentIndex = idx;
+    }
+    advancePastSkipped();
+  }
+  clearOldSessions();
+
   setupTagPicker();
   showCard();
 }
@@ -542,6 +601,8 @@ function animateExit(action) {
 
   setTimeout(function() {
     currentIndex++;
+    advancePastSkipped();
+    saveSession();
     showCard();
   }, 300);
 }
@@ -567,11 +628,15 @@ document.addEventListener('keydown', function(e) {
       if (doc && doc.url) window.open(doc.url, '_blank');
       break;
     case 'ArrowRight':
+      if (currentIndex < docs.length) skippedIds.add(docs[currentIndex].id);
       currentIndex = Math.min(currentIndex + 1, docs.length);
+      advancePastSkipped();
+      saveSession();
       showCard();
       break;
     case 'ArrowLeft':
       currentIndex = Math.max(currentIndex - 1, 0);
+      saveSession();
       showCard();
       break;
   }
@@ -699,6 +764,8 @@ async function loadNextBatch() {
 
     currentIndex = 0;
     stats = { archived: 0, shortlisted: 0, kept: 0, tagged: 0 };
+    skippedIds = new Set();
+    clearOldSessions();
 
     var batchResp = await fetch('/api/batch');
     batch = await batchResp.json();
@@ -732,6 +799,7 @@ async function loadNextBatch() {
 
 // --- Start ---
 init();
+setInterval(function() { fetch('/api/ping').catch(function(){}); }, 5000);
 </script>
 </body>
 </html>

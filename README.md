@@ -58,7 +58,7 @@ On subsequent runs, the script:
 python3 triage-app.py
 ```
 
-This starts a local server and automatically opens your browser to `http://localhost:5111`. No dependencies — uses Python's built-in HTTP server. Press `Ctrl-C` in the terminal to stop the server when you're done.
+This starts a local server and automatically opens your browser to `http://localhost:5111`. No dependencies — uses Python's built-in HTTP server. The server automatically shuts down ~15 seconds after you close the browser tab (or you can press `Ctrl-C`).
 
 ### Keyboard shortcuts
 

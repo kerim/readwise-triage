@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Readwise Triage Web App — zero-dependency local server for fast document triage."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 import json
 import os
 import subprocess
 import sys
+import threading
+import time
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -18,6 +20,7 @@ BATCH_FILE = BASE_DIR / "triage-batch.json"
 ACTED_FILE = BASE_DIR / "triage-acted.json"
 HTML_FILE = BASE_DIR / "triage-app.html"
 PORT = 5111
+last_ping = time.time()
 
 
 def load_acted_ids():
@@ -65,6 +68,10 @@ class TriageHandler(BaseHTTPRequestHandler):
             self.serve_html()
         elif path == "/api/batch":
             self.serve_batch()
+        elif path == "/api/ping":
+            global last_ping
+            last_ping = time.time()
+            self.send_json({"ok": True})
         elif path.startswith("/api/details/"):
             doc_id = path.split("/api/details/", 1)[1]
             self.serve_details(doc_id)
@@ -185,8 +192,19 @@ if __name__ == "__main__":
     print(f"Triage app running at http://localhost:{PORT}")
     webbrowser.open(f"http://localhost:{PORT}")
 
+    def watchdog():
+        while True:
+            time.sleep(10)
+            if time.time() - last_ping > 15:
+                print("\nBrowser disconnected. Shutting down.")
+                server.shutdown()
+                break
+
+    threading.Thread(target=watchdog, daemon=True).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopped.")
+    finally:
         server.server_close()
