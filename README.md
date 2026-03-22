@@ -10,10 +10,20 @@ A local web app for fast triage of your Readwise Reader Later list. AI-generated
 
 **Morning triage:** `triage-app.py` serves a local web app. Cards appear one at a time with title, metadata, overview, and why-read/why-skip pitches. You act on each card with a keypress or swipe, then move to the next.
 
+## Platform
+
+This project is built for **macOS**. Two components are macOS-specific:
+
+- **API key storage** uses macOS Keychain via the `security` CLI. On other platforms, modify `get_api_key()` in `triage-prep.py` to read from an environment variable (e.g. `os.environ["ANTHROPIC_API_KEY"]`) or another secrets manager.
+- **Nightly scheduling** uses launchd. On Linux, use cron instead: `0 3 * * * python3 /path/to/triage-prep.py`
+
+Everything else (Python, HTML/JS, Readwise CLI) is cross-platform.
+
 ## Setup
 
 ### Prerequisites
 
+- macOS (see [Platform](#platform) for other OS notes)
 - Python 3.10+
 - [Readwise CLI](https://github.com/readwise/readwise-cli) (`readwise` in PATH)
 - An Anthropic API key stored in macOS Keychain:
