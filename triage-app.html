@@ -601,12 +601,6 @@ function showError(msg) {
   }, 3000);
 }
 
-function resetCard() {
-  var card = document.getElementById('card');
-  card.className = 'card';
-  card.style.transform = '';
-}
-
 function startExitAnimation(action) {
   var card = document.getElementById('card');
   if (action === 'archive' || action === 'tag_archive') card.className = 'card exit-left';
@@ -624,7 +618,6 @@ function doAction(action, tags) {
   var body = { id: doc.id, action: action, title: doc.title };
   if (tags && tags.length) body.tags = tags;
 
-  // Fire action (server responds instantly, CLI runs in background)
   fetch('/api/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -633,7 +626,6 @@ function doAction(action, tags) {
     showError('Network error: ' + e.message);
   });
 
-  // Update stats and animate immediately
   if (action === 'archive' || action === 'tag_archive') stats.archived++;
   else if (action === 'shortlist') stats.shortlisted++;
   else if (action === 'keep') stats.kept++;
