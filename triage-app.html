@@ -293,6 +293,23 @@
   .tag-actions .cancel { background: var(--bg-element); color: var(--text-secondary); }
   .tag-actions .confirm { background: var(--accent); color: var(--accent-text); }
 
+  .error-toast {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--red);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .error-toast.visible { opacity: 1; }
+
   .empty-state { text-align: center; color: var(--text-secondary); font-size: 18px; }
   .empty-state-emoji { font-size: 48px; margin-bottom: 16px; }
 
@@ -366,6 +383,7 @@ var currentIndex = 0;
 var stats = { archived: 0, shortlisted: 0, kept: 0, tagged: 0 };
 var selectedTags = new Set();
 var skippedIds = new Set();
+var actionInFlight = false;
 
 // --- Theme ---
 function initTheme() {
@@ -569,41 +587,65 @@ function updateCounter() {
 }
 
 // --- Actions ---
-function doAction(action, tags) {
-  var doc = docs[currentIndex];
-  if (!doc) return;
-
-  var body = { id: doc.id, action: action };
-  if (tags && tags.length) body.tags = tags;
-
-  fetch('/api/action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(function(r) {
-    if (!r.ok) r.json().then(function(d) { console.error('Action failed:', d.error || d); });
-  }).catch(function(e) { console.error('Action error:', e); });
-
-  if (action === 'archive' || action === 'tag_archive') stats.archived++;
-  else if (action === 'shortlist') stats.shortlisted++;
-  else if (action === 'keep') stats.kept++;
-  if (tags && tags.length) stats.tagged++;
-
-  animateExit(action);
+function showError(msg) {
+  var existing = document.querySelector('.error-toast');
+  if (existing) existing.remove();
+  var toast = document.createElement('div');
+  toast.className = 'error-toast';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  requestAnimationFrame(function() { toast.classList.add('visible'); });
+  setTimeout(function() {
+    toast.classList.remove('visible');
+    setTimeout(function() { toast.remove(); }, 300);
+  }, 3000);
 }
 
-function animateExit(action) {
+function resetCard() {
+  var card = document.getElementById('card');
+  card.className = 'card';
+  card.style.transform = '';
+}
+
+function startExitAnimation(action) {
   var card = document.getElementById('card');
   if (action === 'archive' || action === 'tag_archive') card.className = 'card exit-left';
   else if (action === 'shortlist') card.className = 'card exit-right';
   else if (action === 'keep') card.className = 'card exit-down';
   else card.className = 'card exit-up';
+}
 
+function doAction(action, tags) {
+  if (actionInFlight) return;
+  var doc = docs[currentIndex];
+  if (!doc) return;
+  actionInFlight = true;
+
+  var body = { id: doc.id, action: action, title: doc.title };
+  if (tags && tags.length) body.tags = tags;
+
+  // Fire action (server responds instantly, CLI runs in background)
+  fetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).catch(function(e) {
+    showError('Network error: ' + e.message);
+  });
+
+  // Update stats and animate immediately
+  if (action === 'archive' || action === 'tag_archive') stats.archived++;
+  else if (action === 'shortlist') stats.shortlisted++;
+  else if (action === 'keep') stats.kept++;
+  if (tags && tags.length) stats.tagged++;
+
+  startExitAnimation(action);
   setTimeout(function() {
     currentIndex++;
     advancePastSkipped();
     saveSession();
     showCard();
+    actionInFlight = false;
   }, 300);
 }
 
@@ -799,7 +841,17 @@ async function loadNextBatch() {
 
 // --- Start ---
 init();
-setInterval(function() { fetch('/api/ping').catch(function(){}); }, 5000);
+setInterval(function() {
+  fetch('/api/ping')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.errors && d.errors.length) {
+        var titles = d.errors.map(function(e) { return e.title || 'unknown'; });
+        showError(d.errors.length + ' action(s) failed: ' + titles.join(', '));
+      }
+    })
+    .catch(function(){});
+}, 5000);
 </script>
 </body>
 </html>

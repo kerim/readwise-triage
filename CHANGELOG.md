@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-24
+
+### Fixed
+
+- Actions (shortlist, archive, tag & archive) now properly report errors instead of silently failing
+- Server returns HTTP 500 on CLI failure for document details endpoint
+
+### Changed
+
+- Actions execute instantly: CLI calls run in background threads, server responds immediately
+- Card animation and advance complete in 300ms regardless of CLI latency
+- Background failures un-mark the document so it reappears in the next triage session
+- Errors from background actions surface as toast notifications via the ping endpoint
+- Atomic file writes for triage-acted.json prevent corruption on process exit
+- Thread-safe locking on acted-ids file access
+
 ## [0.2.0] - 2026-03-22
 
 ### Added

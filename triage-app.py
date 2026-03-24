@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Readwise Triage Web App — zero-dependency local server for fast document triage."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 import json
 import os
@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import webbrowser
+from collections import deque
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from pathlib import Path
@@ -21,6 +22,8 @@ ACTED_FILE = BASE_DIR / "triage-acted.json"
 HTML_FILE = BASE_DIR / "triage-app.html"
 PORT = 5111
 last_ping = time.time()
+action_errors = deque(maxlen=50)
+action_lock = threading.Lock()
 
 
 def load_acted_ids():
@@ -32,8 +35,10 @@ def load_acted_ids():
 
 
 def save_acted_ids(ids):
-    with open(ACTED_FILE, "w") as f:
+    tmp = ACTED_FILE.with_suffix(".tmp")
+    with open(tmp, "w") as f:
         json.dump(sorted(ids), f)
+    os.replace(str(tmp), str(ACTED_FILE))
 
 
 def run_readwise(*args):
@@ -71,7 +76,13 @@ class TriageHandler(BaseHTTPRequestHandler):
         elif path == "/api/ping":
             global last_ping
             last_ping = time.time()
-            self.send_json({"ok": True})
+            errors = []
+            while action_errors:
+                try:
+                    errors.append(action_errors.popleft())
+                except IndexError:
+                    break
+            self.send_json({"ok": True, "errors": errors})
         elif path.startswith("/api/details/"):
             doc_id = path.split("/api/details/", 1)[1]
             self.serve_details(doc_id)
@@ -108,14 +119,16 @@ class TriageHandler(BaseHTTPRequestHandler):
             self.send_json({"error": "No batch file. Run triage-prep.py first."}, 404)
             return
 
-        acted = load_acted_ids()
+        with action_lock:
+            acted = load_acted_ids()
         batch["documents"] = [d for d in batch["documents"] if d["id"] not in acted]
         self.send_json(batch)
 
     def serve_details(self, doc_id):
         result = run_readwise("reader-get-document-details",
                               "--document-id", doc_id)
-        self.send_json(result)
+        status = 500 if "error" in result else 200
+        self.send_json(result, status)
 
     def run_prep(self):
         """Run triage-prep.py to generate a new batch."""
@@ -140,44 +153,66 @@ class TriageHandler(BaseHTTPRequestHandler):
         doc_id = data.get("id")
         action = data.get("action")
         tags = data.get("tags", [])
+        title = data.get("title", "")
 
         if not doc_id or not action:
             self.send_json({"error": "Missing id or action"}, 400)
             return
-
-        result = {}
-
-        if action == "archive":
-            result = run_readwise("reader-move-documents",
-                                  "--document-ids", doc_id,
-                                  "--location", "archive")
-        elif action == "shortlist":
-            result = run_readwise("reader-move-documents",
-                                  "--document-ids", doc_id,
-                                  "--location", "shortlist")
-        elif action == "keep":
-            pass
-        elif action == "tag_archive":
-            if tags:
-                tag_str = ",".join(tags)
-                tag_result = run_readwise("reader-add-tags-to-document",
-                                          "--document-id", doc_id,
-                                          "--tag-names", tag_str)
-                if "error" in tag_result:
-                    self.send_json({"error": "Tagging failed: " + tag_result["error"]}, 500)
-                    return
-            result = run_readwise("reader-move-documents",
-                                  "--document-ids", doc_id,
-                                  "--location", "archive")
-        else:
+        if action not in ("archive", "shortlist", "keep", "tag_archive"):
             self.send_json({"error": f"Unknown action: {action}"}, 400)
             return
 
-        acted = load_acted_ids()
-        acted.add(doc_id)
-        save_acted_ids(acted)
+        # Mark acted-on immediately (optimistic)
+        with action_lock:
+            acted = load_acted_ids()
+            acted.add(doc_id)
+            save_acted_ids(acted)
 
-        self.send_json({"ok": True, "result": result})
+        # Respond instantly
+        self.send_json({"ok": True})
+
+        # Dispatch CLI work to background thread (skip for "keep")
+        if action != "keep":
+            threading.Thread(
+                target=_execute_action_background,
+                args=(doc_id, action, tags, title),
+                daemon=True
+            ).start()
+
+
+def _execute_action_background(doc_id, action, tags, title):
+    """Run CLI action in background. On failure, un-mark acted and queue error."""
+    result = {}
+
+    if action == "tag_archive":
+        if tags:
+            tag_str = ",".join(tags)
+            tag_result = run_readwise("reader-add-tags-to-document",
+                                      "--document-id", doc_id,
+                                      "--tag-names", tag_str)
+            if "error" in tag_result:
+                _handle_background_failure(
+                    doc_id, title, "Tagging failed: " + tag_result["error"])
+                return
+        result = run_readwise("reader-move-documents",
+                              "--document-ids", doc_id,
+                              "--location", "archive")
+    elif action in ("archive", "shortlist"):
+        result = run_readwise("reader-move-documents",
+                              "--document-ids", doc_id,
+                              "--location", action)
+
+    if "error" in result:
+        _handle_background_failure(doc_id, title, result["error"])
+
+
+def _handle_background_failure(doc_id, title, error_msg):
+    """Un-mark doc as acted and queue error for client."""
+    with action_lock:
+        acted = load_acted_ids()
+        acted.discard(doc_id)
+        save_acted_ids(acted)
+    action_errors.append({"doc_id": doc_id, "title": title, "error": error_msg})
 
 
 if __name__ == "__main__":
