@@ -18,14 +18,14 @@ import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 
+from triage_common import run_readwise as _run_readwise, load_acted_ids, clear_acted, BATCH_FILE
+
 # --- Configuration ---
 FRESH_BATCH_SIZE = 20  # max new items to fetch per run
 MODEL = "claude-haiku-4-5-20251001"
 TAG_ARCHIVE_SAMPLE = 100  # how many archived docs to sample for tag stats
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BATCH_FILE = os.path.join(BASE_DIR, "triage-batch.json")
-ACTED_FILE = os.path.join(BASE_DIR, "triage-acted.json")
 PERSONA_FILE = os.path.join(BASE_DIR, "reader_persona.md")
 DOC_FIELDS = "url,title,author,category,word_count,reading_time,summary,site_name,published_date,saved_at"
 
@@ -45,13 +45,12 @@ def get_api_key():
 
 
 def run_readwise(*args):
-    """Run a readwise CLI command and return parsed JSON."""
-    cmd = ["readwise"] + list(args) + ["--json"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Readwise CLI error: {result.stderr}", file=sys.stderr)
+    """Run a readwise CLI command, exit on error."""
+    result = _run_readwise(*args)
+    if "error" in result:
+        print(f"Readwise CLI error: {result['error']}", file=sys.stderr)
         sys.exit(1)
-    return json.loads(result.stdout)
+    return result
 
 
 def fetch_later_documents(limit, updated_after=None):
@@ -104,22 +103,6 @@ def load_existing_batch():
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return None
-
-
-def load_acted_ids():
-    try:
-        with open(ACTED_FILE, "r") as f:
-            return set(json.load(f))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return set()
-
-
-def clear_acted():
-    """Remove acted file after pruning."""
-    try:
-        os.remove(ACTED_FILE)
-    except FileNotFoundError:
-        pass
 
 
 def generate_pitches(documents, persona, api_key):

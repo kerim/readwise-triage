@@ -5,7 +5,6 @@ __version__ = "0.3.0"
 
 import json
 import os
-import subprocess
 import sys
 import threading
 import time
@@ -16,41 +15,14 @@ from socketserver import ThreadingMixIn
 from pathlib import Path
 from urllib.parse import urlparse
 
+from triage_common import run_readwise, load_acted_ids, save_acted_ids, BATCH_FILE, ACTED_FILE
+
 BASE_DIR = Path(__file__).parent
-BATCH_FILE = BASE_DIR / "triage-batch.json"
-ACTED_FILE = BASE_DIR / "triage-acted.json"
 HTML_FILE = BASE_DIR / "triage-app.html"
 PORT = 5111
 last_ping = time.time()
 action_errors = deque(maxlen=50)
 action_lock = threading.Lock()
-
-
-def load_acted_ids():
-    try:
-        with open(ACTED_FILE, "r") as f:
-            return set(json.load(f))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return set()
-
-
-def save_acted_ids(ids):
-    tmp = ACTED_FILE.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(sorted(ids), f)
-    os.replace(str(tmp), str(ACTED_FILE))
-
-
-def run_readwise(*args):
-    """Run a readwise CLI command and return parsed JSON."""
-    cmd = ["readwise"] + list(args) + ["--json"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        return {"error": result.stderr.strip()}
-    try:
-        return json.loads(result.stdout)
-    except (json.JSONDecodeError, ValueError):
-        return {"ok": True}
 
 
 class TriageHandler(BaseHTTPRequestHandler):
