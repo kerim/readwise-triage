@@ -1,6 +1,9 @@
 # Personal
 reader_persona.md
 
+# Python
+__pycache__/
+
 # Generated / runtime
 triage-batch.json
 triage-acted.json
