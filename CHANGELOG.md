@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Errors from background actions surface as toast notifications via the ping endpoint
 - Atomic file writes for triage-acted.json prevent corruption on process exit
 - Thread-safe locking on acted-ids file access
+- Extracted shared utilities (run_readwise, acted-ids lifecycle, path constants) into triage_common.py
 
 ## [0.2.0] - 2026-03-22
 
