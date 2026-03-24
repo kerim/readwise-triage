@@ -5,6 +5,7 @@ __version__ = "0.3.0"
 
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
